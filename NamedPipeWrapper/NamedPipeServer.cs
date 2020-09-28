@@ -30,6 +30,16 @@ namespace NamedPipeWrapper
             : base(pipeName, pipeSecurity)
         {
         }
+
+        /// <summary>
+        /// Constructs a new <c>NamedPipeServer</c> object that listens for client connections on the given <paramref name="pipeName"/>.
+        /// </summary>
+        /// <param name="pipeName">Name of the pipe to listen on</param>
+        /// <param name="pipeTransmissionMode"></param>
+        public NamedPipeServer(string pipeName, PipeTransmissionMode pipeTransmissionMode)
+            : base(pipeName, null, pipeTransmissionMode)
+        {
+        }
     }
 
     /// <summary>
@@ -63,6 +73,7 @@ namespace NamedPipeWrapper
 
         private readonly string _pipeName;
         private readonly PipeSecurity _pipeSecurity;
+        private readonly PipeTransmissionMode _pipeTransmissionMode;
         private readonly List<NamedPipeConnection<TRead, TWrite>> _connections = new List<NamedPipeConnection<TRead, TWrite>>();
 
         private int _nextPipeId;
@@ -74,10 +85,12 @@ namespace NamedPipeWrapper
         /// </summary>
         /// <param name="pipeName">Name of the pipe to listen on</param>
         /// <param name="pipeSecurity"></param>
-        public Server(string pipeName, PipeSecurity pipeSecurity)
+        /// <param name="pipeTransmissionMode"></param>
+        public Server(string pipeName, PipeSecurity pipeSecurity, PipeTransmissionMode pipeTransmissionMode = PipeTransmissionMode.Byte)
         {
             _pipeName = pipeName;
             _pipeSecurity = pipeSecurity;
+            _pipeTransmissionMode = pipeTransmissionMode;
         }
 
         /// <summary>
@@ -156,11 +169,11 @@ namespace NamedPipeWrapper
         {
             while (_shouldKeepRunning)
             {
-                WaitForConnection(_pipeName, _pipeSecurity);
+                WaitForConnection(_pipeName, _pipeSecurity, _pipeTransmissionMode);
             }
         }
 
-        private void WaitForConnection(string pipeName, PipeSecurity pipeSecurity)
+        private void WaitForConnection(string pipeName, PipeSecurity pipeSecurity, PipeTransmissionMode pipeTransmissionMode)
         {
             NamedPipeServerStream handshakePipe = null;
             NamedPipeServerStream dataPipe = null;
@@ -171,14 +184,14 @@ namespace NamedPipeWrapper
             try
             {
                 // Send the client the name of the data pipe to use
-                handshakePipe = PipeServerFactory.CreateAndConnectPipe(pipeName, pipeSecurity);
+                handshakePipe = PipeServerFactory.CreateAndConnectPipe(pipeName, pipeSecurity, pipeTransmissionMode);
                 var handshakeWrapper = new PipeStreamWrapper<string, string>(handshakePipe);
                 handshakeWrapper.WriteObject(connectionPipeName);
                 handshakeWrapper.WaitForPipeDrain();
                 handshakeWrapper.Close();
 
                 // Wait for the client to connect to the data pipe
-                dataPipe = PipeServerFactory.CreatePipe(connectionPipeName, pipeSecurity);
+                dataPipe = PipeServerFactory.CreatePipe(connectionPipeName, pipeSecurity, pipeTransmissionMode);
                 dataPipe.WaitForConnection();
 
                 // Add the client's connection to the list of connections
@@ -270,16 +283,16 @@ namespace NamedPipeWrapper
 
     static class PipeServerFactory
     {
-        public static NamedPipeServerStream CreateAndConnectPipe(string pipeName, PipeSecurity pipeSecurity)
+        public static NamedPipeServerStream CreateAndConnectPipe(string pipeName, PipeSecurity pipeSecurity, PipeTransmissionMode pipeTransmissionMode)
         {
-            var pipe = CreatePipe(pipeName, pipeSecurity);
+            var pipe = CreatePipe(pipeName, pipeSecurity, pipeTransmissionMode);
             pipe.WaitForConnection();
             return pipe;
         }
 
-        public static NamedPipeServerStream CreatePipe(string pipeName, PipeSecurity pipeSecurity)
+        public static NamedPipeServerStream CreatePipe(string pipeName, PipeSecurity pipeSecurity, PipeTransmissionMode pipeTransmissionMode)
         {
-            return new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.WriteThrough, 0, 0, pipeSecurity);
+            return new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, pipeTransmissionMode, PipeOptions.Asynchronous | PipeOptions.WriteThrough, 0, 0, pipeSecurity);
         }
     }
 }
